@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#992f50">
+  <meta name="description" content="Asistente provisional de anticoagulación perioperatoria basado en el consenso español de 2025. Recomendación paso a paso para profesionales.">
+  <title>QxApp · Anticoagulación perioperatoria</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23992f50'/%3E%3Cpath d='M18 32h28M32 18v28' stroke='white' stroke-width='5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css?v=0.2.0">
+  <script defer src="clinical.js?v=0.2.0"></script><script defer src="procedures.js?v=0.2.0"></script><script defer src="app.js?v=0.2.0"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="./" aria-label="QxApp, inicio"><span class="brand-mark">Qx</span><span><strong class="brand-name">QxApp<span style="color:#992f50">.</span></strong><span class="brand-caption">ANTICOAGULACIÓN</span></span></a>
+      <nav id="steps" class="nav-steps" aria-label="Pasos del asistente"></nav>
+      <div class="sidebar-bottom"><span class="pill">CONSENSO 2025</span><button class="text-button" data-action="sources">Fuentes y alcance ↗</button><small>Reconstrucción independiente<br>Versión 0.2 · Octubre 2026</small></div>
+    </aside>
+    <main class="main" id="main">
+      <header class="topbar"><span class="topbar-label">ASISTENTE PERIOPERATORIO <span aria-hidden="true">/</span> Uso profesional</span><div class="topbar-actions"><button class="text-button" data-action="sources">Fuentes</button><button class="text-button" data-action="reset">↺ Nuevo caso</button></div></header>
+      <div class="page-heading"><div><p class="eyebrow">DE LA VALORACIÓN AL PLAN</p><h1>Anticoagulación, paso a paso.</h1><p>El algoritmo sugiere el manejo de la anticoagulación según el procedimiento y los riesgos del paciente adulto.</p></div><span class="status-pill">● Versión para revisión</span></div>
+      <div class="notice warning" style="margin-bottom:24px"><strong>Base clínica: consenso español de 2025.</strong> Versión provisional para revisión profesional, pendiente de validación clínica independiente. <button class="text-button" data-action="sources">Ver alcance y actualización ↗</button></div>
+      <div class="workspace"><section class="panel" id="panel" aria-live="polite"></section><aside class="summary" id="summary" aria-label="Resumen del caso"></aside></div>
+      <footer class="footer"><span>Sin datos identificativos · El caso se mantiene solo en esta pestaña</span><span>Basado en Vivas et al. · Rev Esp Cardiol, 2025</span></footer>
+      <p class="rights-note">Solución provisional ante la falta de acceso a la aplicación original QxAApp. Todos los derechos de la aplicación original y del contenido de referencia están reservados a la Sociedad Española de Cardiología (SEC). Esta web es independiente y no está avalada por la SEC.</p>
+    </main>
+  </div>
+  <dialog class="modal" id="sources-modal" aria-labelledby="sources-title"><div class="modal-header"><h2 id="sources-title">Fuentes y alcance</h2><button class="close-button" data-action="close-sources" aria-label="Cerrar">×</button></div><div class="modal-body">
+    <p>QxApp es una reconstrucción independiente del recorrido de anticoagulación de QxAApp. No es la aplicación oficial de la Sociedad Española de Cardiología ni cuenta con su certificación.</p>
+    <div class="notice warning"><strong>Qué calcula esta versión</strong><p>Adultos con anticoagulación oral y un procedimiento programado: riesgo tromboembólico de la tabla 2, manejo del riesgo mínimo de la tabla 3, interrupción y reinicio de la figura 2 y riesgo del procedimiento según el suplemento de 2025. El catálogo es una selección de procedimientos, no el suplemento completo.</p></div>
+    <p>La urgencia, la anestesia neuroaxial, el tratamiento combinado, la función renal inestable y otras situaciones especiales requieren un plan individual. La antiagregación aislada y las dosis de heparina no se calculan en esta versión.</p>
+    <div class="sources-list">
+      <article class="source-item"><span class="pill">MOTOR · 2025</span><h3>Consenso multidisciplinar español</h3><p>Vivas D et al. Abordaje del tratamiento antitrombótico durante el perioperatorio y el periprocedimiento: documento de consenso 2025. Rev Esp Cardiol. DOI: 10.1016/j.recesp.2025.07.008.</p><a href="https://doi.org/10.1016/j.recesp.2025.07.008" target="_blank" rel="noopener">Artículo original ↗</a> · <a href="https://www.aeu.es/wp-content/uploads/libros/DocumentoConsensoAntitrombotico2025.pdf" target="_blank" rel="noopener">Leer documento ↗</a> · <a href="https://static.elsevier.es/multimedia/03008932/0000007900000001/v1_202512290506/S0300893225014101/v1_202512290506/es/main.assets/mmc1.pdf" target="_blank" rel="noopener">Suplemento de procedimientos ↗</a></article>
+      <article class="source-item"><h3>Cómo se obtiene la sugerencia</h3><p>La categoría hemorrágica del procedimiento determina la vía: manejo de riesgo mínimo, interrupción programada o revisión individual. El fármaco, la función renal, el INR y el riesgo trombótico completan la pauta. La decisión no se elige con una casilla de preferencia.</p></article>
+      <article class="source-item"><h3>Referencia de la aplicación</h3><p>Ficha y capturas de QxAApp en el directorio de TIC Salut Social, revisión de mayo de 2019.</p><a href="https://ticsalutsocial.cat/es/app/qxaaapp/" target="_blank" rel="noopener">Ver aplicación original ↗</a></article>
+    </div><p class="field-hint">La clasificación de riesgos no valida por sí sola una pauta. El equipo responsable debe confirmar la hemostasia, la indicación y el protocolo vigente. No se envían datos del caso a un servidor ni se guardan en el navegador.</p>
+  </div></dialog>
+  <div class="toast hide" id="toast" role="status"></div>
+</body>
+</html>

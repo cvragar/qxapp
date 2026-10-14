@@ -1,0 +1,35 @@
+name: Publicar QxApp
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v6
+      - name: Verificar reglas y sintaxis
+        run: |
+          node tests/clinical.test.cjs
+          node --check dist/app.js
+          node --check dist/procedures.js
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+      - name: Preparar web estática
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+      - name: Publicar
+        id: deployment
+        uses: actions/deploy-pages@v4
