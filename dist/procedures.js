@@ -8,7 +8,12 @@
  * continuationEligible se conserva por compatibilidad: true sólo para mínimo;
  * la conducta real se calcula en clinical.js según fármaco y contexto clínico.
  */
-(() => {
+(function (root, factory) {
+  const procedures = factory();
+  if (typeof module === 'object' && module.exports) module.exports = procedures;
+  if (root) root.QXProcedures = procedures;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
   const sourceUrl = 'https://static.elsevier.es/multimedia/03008932/0000007900000001/v1_202512290506/S0300893225014101/v1_202512290506/es/main.assets/mmc1.pdf';
   const minimal = 'Riesgo mínimo identificado con la nota a del suplemento de 2025. La conducta depende del anticoagulante y de los factores clínicos.';
   const dental = 'La extensión, el contexto sistémico y los medios de la consulta condicionan el sangrado. Aplicar medidas hemostáticas locales (nota f).';
@@ -144,13 +149,14 @@
     'ortho-hip-fracture': 'Fractura de cadera: seguir el circuito de cirugía en 24-48 h del ingreso; no aplicar una demora electiva automática.'
   };
   const mainArticleIds = new Set(['ophth-cataract','endo-diagnostic','endo-diagnostic-biopsy']);
-  window.QXProcedures = rows.map(([id,specialty,name,risk,sourcePage,note,neuraxial]) => ({
+  return Object.freeze(rows.map(([id,specialty,name,risk,sourcePage,note,neuraxial]) => Object.freeze({
     id,specialty,name,risk,note,sourcePage,sourceYear:2025,
     sourceUrl:mainArticleIds.has(id) ? 'https://www.aeu.es/wp-content/uploads/libros/DocumentoConsensoAntitrombotico2025.pdf' : sourceUrl,
     sourceType:mainArticleIds.has(id) ? 'article' : 'supplement',
     sourceDetail:mainArticleIds.has(id) ? 'Artículo principal, página 5, estratificación del riesgo hemorrágico' : 'Tabla 1 del material adicional, página ' + sourcePage,
     continuationEligible:risk === 'minimal' ? true : null,
+    ...(id === 'gyn-caesarean' ? {pregnancy:true} : {}),
     ...(neuraxial ? {neuraxial:true} : {}),
     ...(specialProtocols[id] ? {specialProtocol:specialProtocols[id]} : {})
-  }));
-})();
+  })));
+});

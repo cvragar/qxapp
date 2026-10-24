@@ -2,8 +2,29 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const C = require('../dist/clinical.js');
-const base = { drug:'apixaban', indication:'af', age:68, sex:'male', hypertension:true, bleedingRisk:'low', crcl:85, inr:2.5 };
+const requiredBooleans = [
+  'neuraxial','antiplatelet','multipleAnticoagulants','renalUnstable','activeBleeding',
+  'severeLiverDisease','pregnancy','activeCancer','bleedingModifiers','rheumaticMitral',
+  'antiphospholipidSyndrome','heartFailure','hypertension','diabetes','vascularDisease',
+  'strokeHistory','systemicEmbolism','perioperativeStroke','intracardiacThrombus',
+  'floatingAorticThrombus','recentCardioembolicStroke','valveThrombosis'
+];
+const absentConditions = Object.fromEntries(requiredBooleans.map(field=>[field,false]));
+const base = { ...absentConditions, urgency:'elective', specialProcedure:'', drug:'apixaban', indication:'af', age:68, sex:'male', hypertension:true, bleedingRisk:'low', crcl:85, inr:2.5 };
 const p = overrides => C.makePlan({...base,...overrides});
+function assertNoTiming(plan, context){
+  assert.equal(plan.status,'review',context);
+  assert.equal(plan.lastDoseDay,null,context);
+  assert.equal(plan.lastDoseLabel,null,context);
+  assert.equal(plan.stopDays,null,context);
+  assert.equal(plan.restart.hours,null,context);
+  assert.equal(plan.restart.label,null,context);
+  assert.ok(plan.blockers.length,context);
+}
+function assertInvalid(plan, context){
+  assertNoTiming(plan,context);
+  assert.equal(plan.decision.route,'review',context);
+}
 
 test('2025 CHA₂DS₂-VA: no sex point; age/event points never double-count',()=>{
   for(const [age,expected] of [[64,0],[65,1],[74,1],[75,2]]){
@@ -75,12 +96,12 @@ test('Severe thrombophilia and APS are high risk across indications, including A
 });
 
 test('Algorithm owns continuation: arbitrary interruption preference cannot override procedure',()=>{
-  assert.equal(C.managementDecision({bleedingRisk:'minimal'}).route,'minimal');
-  for(const bleedingRisk of ['low','moderate','high'])assert.equal(C.managementDecision({bleedingRisk,interruption:'no'}).route,'interrupt');
+  assert.equal(C.managementDecision({urgency:'elective',bleedingRisk:'minimal'}).route,'minimal');
+  for(const bleedingRisk of ['low','moderate','high'])assert.equal(C.managementDecision({urgency:'elective',bleedingRisk,interruption:'no'}).route,'interrupt');
   assert.deepEqual(p({interruption:'no'}),p({interruption:'yes'}));
   assert.equal(p({bleedingRisk:'minimal',interruption:'yes'}).interruption,'minimal');
   assert.equal(C.managementDecision({}).route,'pending');
-  assert.equal(C.managementDecision({...base,urgent:true}).route,'review');
+  assert.equal(C.managementDecision({...base,urgency:'urgent',urgent:true}).route,'review');
 });
 
 test('Table 3: minimum risk omits D0, BID DOAC evening before, no generic day calendar',()=>{
@@ -143,7 +164,7 @@ test('Figure 2 restart is within 24 h, or 48–72 h with high risk, conditional 
 });
 
 test('Excluded or ambiguous cases never leak an automatic timing or restart',()=>{
-  for(const input of [{age:''},{age:12},{bleedingModifiers:true},{specialProcedure:'Protocolo específico'},{urgent:true},{neuraxial:true},{antiplatelet:true},{renalUnstable:true},{crcl:''},{crcl:0},{crcl:NaN},{drug:'dabigatran',crcl:29.99},{indication:'valve',valveType:'mitral'},{rheumaticMitral:true},{antiphospholipidSyndrome:true},{multipleAnticoagulants:true},{activeBleeding:true},{severeLiverDisease:true},{pregnancy:true},{drug:'unknown'},{bleedingRisk:''},{bleedingRisk:'lowModerate'},{drug:'warfarina',inr:''}]){
+  for(const input of [{age:''},{age:12},{bleedingModifiers:true},{specialProcedure:'Protocolo específico'},{urgency:'urgent',urgent:true},{neuraxial:true},{antiplatelet:true},{renalUnstable:true},{crcl:''},{crcl:0},{crcl:NaN},{drug:'dabigatran',crcl:29.99},{indication:'valve',valveType:'mitral'},{rheumaticMitral:true},{antiphospholipidSyndrome:true},{multipleAnticoagulants:true},{activeBleeding:true},{severeLiverDisease:true},{pregnancy:true},{drug:'unknown'},{bleedingRisk:''},{bleedingRisk:'lowModerate'},{drug:'warfarina',inr:''}]){
     const plan=p(input);assert.equal(plan.status,'review',JSON.stringify(input));assert.equal(plan.lastDoseDay,null);assert.equal(plan.stopDays,null);assert.equal(plan.restart.hours,null);assert.ok(plan.blockers.length);
   }
 });
@@ -151,4 +172,177 @@ test('Excluded or ambiguous cases never leak an automatic timing or restart',()=
 test('Pure, source-tagged 2025 rules do not claim clinical validation',()=>{
   const frozen=Object.freeze({...base});assert.deepEqual(C.makePlan(frozen),C.makePlan(frozen));
   assert.equal(p().source.year,2025);assert.equal(p().validatedForCurrentPractice,false);assert.equal(p().historical,undefined);
+});
+
+test('Versioned planning contract lists every required safety and risk boolean',()=>{
+  assert.equal(C.version,'0.3.0-consensus-2025');
+  assert.ok(Object.isFrozen(C.requiredBooleanFields));
+  assert.deepEqual([...C.requiredBooleanFields].sort(),[...requiredBooleans].sort());
+});
+
+test('Missing and malformed safety flags fail closed in both drug families and plan routes',()=>{
+  const malformed=[undefined,null,'true','false','on','off','yes','no','',1,0,-1,NaN,[],{},new Boolean(false),new Boolean(true)];
+  for(const drug of ['apixaban','warfarina']){
+    for(const bleedingRisk of ['minimal','low','moderate','high']){
+      for(const field of requiredBooleans){
+        const missing={...base,drug,bleedingRisk};
+        delete missing[field];
+        assertInvalid(C.makePlan(missing),`${drug}/${bleedingRisk}: missing ${field}`);
+        for(const value of malformed){
+          assertInvalid(p({drug,bleedingRisk,[field]:value}),`${drug}/${bleedingRisk}: ${field}=${String(value)}`);
+        }
+      }
+    }
+  }
+});
+
+test('Explicit false safety flags retain ready plans and established timing',()=>{
+  for(const drug of ['apixaban','warfarina']){
+    for(const bleedingRisk of ['minimal','low','moderate','high']){
+      const plan=p({...absentConditions,drug,bleedingRisk});
+      assert.equal(plan.status,'ready',`${drug}/${bleedingRisk}`);
+      assert.equal(plan.blockers.length,0);
+      if(bleedingRisk==='minimal'){
+        assert.equal(plan.lastDoseDay,null);
+        assert.equal(plan.restart.label,'Mañana del día siguiente');
+      }else{
+        assert.equal(plan.lastDoseDay,drug==='warfarina'?-6:bleedingRisk==='low'?-2:-3);
+        assert.deepEqual(plan.restart.hours,bleedingRisk==='high'?[48,72]:[0,24]);
+      }
+    }
+  }
+});
+
+test('Canonical urgency rejects missing, malformed, and contradictory legacy values',()=>{
+  const missing={...base};delete missing.urgency;
+  assertInvalid(C.makePlan(missing),'missing urgency');
+  for(const urgency of [undefined,null,'','Urgent','emergency',true,false,1,{},[]])assertInvalid(p({urgency}),`urgency=${String(urgency)}`);
+  assert.equal(p({urgency:'elective',urgent:false}).status,'ready');
+  assertNoTiming(p({urgency:'urgent'}),'canonical urgent without alias');
+  assertNoTiming(p({urgency:'urgent',urgent:true}),'matching urgent alias');
+  for(const fields of [{urgency:'urgent',urgent:false},{urgency:'elective',urgent:true}]){
+    assertInvalid(p(fields),'contradictory urgency');
+    assert.equal(C.managementDecision({...base,...fields}).route,'review');
+  }
+  for(const urgent of [undefined,null,'urgent','true','false','on','yes',1,0,{},[],new Boolean(false)]){
+    assertInvalid(p({urgent}),`urgent=${String(urgent)}`);
+    assert.equal(C.managementDecision({...base,urgent}).route,'review');
+  }
+});
+
+test('Optional aortic-thrombus alias cannot erase canonical risk or accept malformed values',()=>{
+  for(const aorticFloatingThrombus of [undefined,null,'true','false','on','yes',1,0,{},[],new Boolean(true)]){
+    assertInvalid(p({aorticFloatingThrombus}),`aorticFloatingThrombus=${String(aorticFloatingThrombus)}`);
+  }
+  assert.equal(p({aorticFloatingThrombus:false}).status,'ready');
+  for(const fields of [
+    {floatingAorticThrombus:false,aorticFloatingThrombus:true},
+    {floatingAorticThrombus:true,aorticFloatingThrombus:false},
+    {floatingAorticThrombus:true,aorticFloatingThrombus:true}
+  ]){
+    const plan=p({drug:'warfarina',...fields});
+    assert.equal(plan.status,'ready');
+    assert.equal(plan.risk.level,'high');
+    assert.equal(plan.bridge.indicated,true);
+  }
+});
+
+test('Special-procedure input must explicitly distinguish no protocol from unknown input',()=>{
+  const missing={...base};delete missing.specialProcedure;
+  assertInvalid(C.makePlan(missing),'missing specialProcedure');
+  for(const specialProcedure of [undefined,null,true,false,1,0,[],{},new String('')]){
+    assertInvalid(p({specialProcedure}),`specialProcedure=${String(specialProcedure)}`);
+    assert.equal(C.managementDecision({...base,specialProcedure}).route,'review');
+  }
+  assert.equal(p({specialProcedure:''}).status,'ready');
+  assertNoTiming(p({specialProcedure:'Protocolo específico'}),'explicit special protocol');
+});
+
+test('Catalogue controls survive omitted or falsified caller metadata',()=>{
+  const procedures=require('../dist/procedures.js');
+  assert.ok(Object.isFrozen(procedures));
+  const protectedProcedures=procedures.filter(proc=>proc.neuraxial||proc.specialProtocol||proc.id==='gyn-caesarean');
+  assert.ok(protectedProcedures.length>=7);
+  for(const proc of protectedProcedures){
+    for(const selection of [
+      {procedureId:proc.id},
+      {procedure:{id:proc.id}},
+      {procedure:proc},
+      {procedure:{id:proc.id,neuraxial:false,specialProtocol:'',pregnancy:false,name:'Generic procedure',risk:'low'}}
+    ]){
+      const input={...base,...selection,bleedingRisk:proc.risk,neuraxial:false,pregnancy:false,specialProcedure:''};
+      assertNoTiming(C.makePlan(input),proc.id);
+      if(proc.neuraxial||proc.specialProtocol)assert.equal(C.managementDecision(input).route,'review',proc.id);
+    }
+  }
+});
+
+test('Catalogue IDs and risk are validated before automatic planning',()=>{
+  const procedures=require('../dist/procedures.js');
+  const ordinary=procedures.find(proc=>proc.id==='anes-local');
+  assert.ok(ordinary);
+  for(const selection of [{procedureId:ordinary.id},{procedure:{id:ordinary.id}},{procedureId:ordinary.id,procedure:{id:ordinary.id}}]){
+    const plan=p({...selection,bleedingRisk:ordinary.risk});
+    assert.equal(plan.status,'ready');
+    assert.equal(plan.interruption,'minimal');
+    const deriveRisk={...base,...selection};delete deriveRisk.bleedingRisk;
+    const derived=C.makePlan(deriveRisk);
+    assert.equal(derived.status,'ready');
+    assert.equal(derived.interruption,'minimal');
+    assertInvalid(p({...selection,bleedingRisk:'high'}),'catalogue risk contradiction');
+  }
+  for(const selection of [
+    {procedureId:'unknown-procedure'},
+    {procedure:{id:'unknown-procedure'}},
+    {procedureId:'anes-local',procedure:{id:'anes-neuraxial'}},
+    {procedure:{}},
+    {procedure:[]},
+    {procedure:false},
+    {procedure:'anes-local'},
+    {procedure:1},
+    {procedure:{id:null}},
+    {procedure:{id:1}},
+    {procedureId:1},
+    {procedureId:[]},
+    {procedureId:{}}
+  ])assertInvalid(p(selection),JSON.stringify(selection));
+  assert.equal(p({procedure:null}).status,'ready');
+});
+
+test('Validation and catalogue normalization do not mutate caller input',()=>{
+  const input=Object.freeze({...base,procedure:Object.freeze({id:'anes-local'}),bleedingRisk:'minimal'});
+  const original={...input};
+  assert.equal(C.makePlan(input).status,'ready');
+  assert.deepEqual(input,original);
+  const invalid=Object.freeze({...base,activeBleeding:'true'});
+  assertInvalid(C.makePlan(invalid),'frozen invalid input');
+  assert.equal(invalid.activeBleeding,'true');
+});
+
+test('Serialized __proto__ data cannot supply required urgency or safety flags',()=>{
+  for(const field of ['urgency',...requiredBooleans]){
+    const missing={...base};delete missing[field];
+    const input=JSON.parse(JSON.stringify({...missing,['__proto__']:{[field]:base[field]}}));
+    assert.ok(Object.hasOwn(input,'__proto__'));
+    assert.equal(Object.hasOwn(input,field),false);
+    assertInvalid(C.makePlan(input),`serialized prototype: missing ${field}`);
+    assert.equal(Object.getPrototypeOf(input),Object.prototype);
+  }
+});
+
+test('Directly inherited fields cannot satisfy required planning facts',()=>{
+  for(const field of ['urgency',...requiredBooleans]){
+    const missing={...base};delete missing[field];
+    const inherited=Object.assign(Object.create({[field]:base[field]}),missing);
+    assert.equal(inherited[field],base[field]);
+    assert.equal(Object.hasOwn(inherited,field),false);
+    assertInvalid(C.makePlan(inherited),`inherited ${field}`);
+  }
+  assertInvalid(C.makePlan(Object.create(base)),'all facts inherited');
+});
+
+test('Non-object planning inputs return review without automatic timing',()=>{
+  for(const input of [undefined,null,false,true,0,1,'','case',[],()=>{},Symbol('case')]){
+    assertInvalid(C.makePlan(input),`input type ${typeof input}`);
+  }
 });
