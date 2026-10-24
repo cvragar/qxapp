@@ -22,7 +22,10 @@ jobs:
       - name: Verificar reglas y sintaxis
         run: |
           node tests/clinical.test.cjs
+          node tests/urgent.test.cjs
           node --check dist/app.js
+          node --check dist/clinical.js
+          node --check dist/urgent.js
           node --check dist/procedures.js
       - name: Configurar Pages
         uses: actions/configure-pages@v5
@@ -33,3 +36,4 @@ jobs:
       - name: Publicar
         id: deployment
         uses: actions/deploy-pages@v4
+

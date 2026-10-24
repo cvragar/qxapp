@@ -324,5 +324,14 @@ th { color: #5e6b79; background: #f7f9fb; font-size: 11px; font-weight: 600; }
 .risk-tag.minimal { color: #37775f; background: #ecf6f0; }
 .risk-tag.lowModerate { color: #976c29; background: #fbf2df; }
 .rights-note { max-width: 1184px; margin: 0 auto 25px; padding: 0 42px; color: #687583; font-size: 11px; line-height: 1.7; }
+.urgent-banner:first-child { margin-top: 0; }
+.urgent-banner p { margin-top: 5px; }
+.urgent-summary-details { grid-column: 1 / -1; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.urgent-summary-details > summary { font-size: 12px; line-height: 1.5; }
+.urgent-source-links { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12px; }
+.urgent-source-links a { overflow-wrap: anywhere; }
+select:disabled { cursor: default; background: #f4f6f8; color: #536172; }
+@media print { .urgent-result .print-only .summary-row { break-inside: avoid; } .urgent-source-links { margin: 12px 0; } }
 @media (max-width: 680px) { .rights-note { padding: 0 20px; } }
 @media print { .rights-note { display: block; font-size: 8pt; padding: 14px 0; } }
+
