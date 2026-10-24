@@ -2,7 +2,7 @@
 
 [**Abrir la web**](https://cvragar.github.io/qxapp/)
 
-Asistente web independiente basado en el consenso español de 2025. Versión 0.2, octubre de 2026.
+Asistente web independiente basado en el consenso español de 2025. Versión 0.3, octubre de 2026.
 
 **Solución provisional ante la falta de acceso a la aplicación original QxAApp. Todos los derechos de la aplicación original y del contenido de referencia están reservados a la Sociedad Española de Cardiología (SEC). Esta web es independiente y no está avalada por la SEC.**
 
@@ -51,3 +51,37 @@ python3 -m http.server 4173 --directory dist
 - `.github/workflows/pages.yml`: verifica y publica `dist/` en GitHub Pages con cada cambio en `main`.
 
 La copia de GitHub excluye la configuración privada del alojamiento de desarrollo.
+
+## Contrato de la API clínica 0.3
+
+`QXClinical.makePlan(input)` valida los datos antes de calcular un calendario. La versión `0.3.0-consensus-2025` introduce un cambio incompatible para integraciones que omitían indicadores o enviaban valores como `"true"`, `"false"`, `1` o `0`. Esas entradas devuelven `status: 'review'`, los motivos en `blockers` y ningún tiempo de última toma, suspensión o reinicio.
+
+- Todos los campos de `QXClinical.requiredBooleanFields` son obligatorios y deben ser booleanos reales. `false` expresa una ausencia comprobada; un dato desconocido no debe convertirse en `false`. La lista exportada y sus elementos se muestran en el ejemplo siguiente.
+- `urgency` es obligatorio: `'elective'` o `'urgent'`. El alias opcional `urgent` debe ser booleano y coincidir con `urgency`; una contradicción requiere revisión.
+- `specialProcedure` es obligatorio y debe ser texto. Usar `''` cuando no exista un protocolo adicional. Un texto no vacío bloquea el calendario genérico.
+- `floatingAorticThrombus` es el indicador obligatorio del trombo aórtico flotante. El alias opcional `aorticFloatingThrombus` también debe ser booleano; un `true` en cualquiera de los dos conserva el criterio de riesgo.
+- Para usar el catálogo, proporcionar `procedureId` o `procedure: {id: '…'}`. Si se envían ambos, deben coincidir. El motor consulta su propio catálogo y deriva el riesgo hemorrágico, la condición neuroaxial, el protocolo específico y el embarazo cuando corresponda; no confía en los metadatos del objeto recibido. Un ID desconocido o un `bleedingRisk` no vacío que contradiga el catálogo requiere revisión. En clasificación manual, omitir ambos campos o usar `procedureId: ''` y `procedure: null`, e indicar `bleedingRisk`.
+
+Ejemplo de integración con datos ficticios, tras comprobar expresamente los antecedentes y las situaciones señaladas:
+
+```js
+const QXClinical = require('./dist/clinical.js');
+const plan = QXClinical.makePlan({
+  drug: 'apixaban', indication: 'af', age: 68, crcl: 85,
+  urgency: 'elective', bleedingRisk: 'low', specialProcedure: '',
+  thrombophilia: 'none',
+  neuraxial: false, antiplatelet: false, multipleAnticoagulants: false,
+  renalUnstable: false, activeBleeding: false, severeLiverDisease: false,
+  pregnancy: false, activeCancer: false, bleedingModifiers: false,
+  rheumaticMitral: false, antiphospholipidSyndrome: false,
+  heartFailure: false, hypertension: true, diabetes: false,
+  vascularDisease: false, strokeHistory: false, systemicEmbolism: false,
+  perioperativeStroke: false, intracardiacThrombus: false,
+  floatingAorticThrombus: false, recentCardioembolicStroke: false,
+  valveThrombosis: false
+});
+```
+
+Los demás requisitos clínicos siguen dependiendo del fármaco y la indicación, por ejemplo INR para AVK o tiempo desde un evento previo. Las funciones auxiliares (`cha2ds2va`, `thromboticRisk`, `cockcroftGault` y `managementDecision`) son componentes de cálculo o de la interfaz; sus resultados no sustituyen un plan validado por `makePlan`.
+
+En el navegador, cargar `procedures.js` antes de `clinical.js` y después `app.js`, como hace `index.html`. Con CommonJS, `clinical.js` importa el catálogo automáticamente. El catálogo y sus entradas están congelados. La interfaz inicializa las casillas sin marcar como booleanos explícitos y conserva las confirmaciones de revisión de los datos.

@@ -5,10 +5,10 @@
  * A minimal-risk procedure has a separate dose-omission strategy (table 3).
  */
 (function (root, factory) {
-  var api = factory();
+  var api = factory(typeof module === 'object' && module.exports ? require('./procedures.js') : root.QXProcedures);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.QXClinical = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (procedures) {
   'use strict';
   var SOURCE = Object.freeze({year: 2025, short: 'Vivas et al. · Consenso multidisciplinar 2025 · Rev Esp Cardiol', detail: 'Tabla 2 (riesgo trombótico), figura 2 (calendario), tabla 3 (riesgo mínimo) y texto, pp. 4–7', url: 'https://doi.org/10.1016/j.recesp.2025.07.008'});
   var DRUGS = Object.freeze({
@@ -19,6 +19,62 @@
   function number(v) { if(v===null||v===undefined||typeof v==='boolean'||(typeof v==='string'&&v.trim()===''))return null;var n=Number(v);return Number.isFinite(n)?n:null; }
   function validAge(v){var n=number(v);return n!==null&&n>=18&&n<=120?n:null;}
   function yes(v){return v===true;}
+  var REQUIRED_BOOLEAN_FIELDS = Object.freeze([
+    'neuraxial','antiplatelet','multipleAnticoagulants','renalUnstable','activeBleeding',
+    'severeLiverDisease','pregnancy','activeCancer','bleedingModifiers','rheumaticMitral',
+    'antiphospholipidSyndrome','heartFailure','hypertension','diabetes','vascularDisease',
+    'strokeHistory','systemicEmbolism','perioperativeStroke','intracardiacThrombus',
+    'floatingAorticThrombus','recentCardioembolicStroke','valveThrombosis'
+  ]);
+  function owns(input,key){return Object.prototype.hasOwnProperty.call(input,key);}
+  // Validate before deriving catalogue controls so unknown facts never become false.
+  function prepareInput(input,requireSafety){
+    var errors=[],value=Object.create(null);
+    if(!input||typeof input!=='object'||Array.isArray(input)){
+      errors.push('La entrada debe ser un objeto con los datos clínicos explícitos.');
+    }else Object.assign(value,input);
+    if(requireSafety){
+      REQUIRED_BOOLEAN_FIELDS.forEach(function(key){
+        if(!owns(value,key)||typeof value[key]!=='boolean')errors.push('Confirma el dato '+key+' con un booleano true o false.');
+      });
+      if(!owns(value,'specialProcedure')||typeof value.specialProcedure!=='string')errors.push('Indica specialProcedure como texto; usa una cadena vacía si no hay protocolo adicional.');
+    }else if(owns(value,'specialProcedure')&&typeof value.specialProcedure!=='string'){
+      errors.push('El protocolo adicional del procedimiento debe ser texto.');
+    }
+    if(!owns(value,'urgency')||['elective','urgent'].indexOf(value.urgency)===-1)errors.push('Indica urgency como elective o urgent.');
+    if(owns(value,'urgent')&&(typeof value.urgent!=='boolean'||value.urgent!==(value.urgency==='urgent'))){
+      errors.push('El indicador urgent debe ser booleano y coincidir con urgency.');
+    }
+    value.urgent=value.urgency==='urgent';
+    if(owns(value,'aorticFloatingThrombus')&&typeof value.aorticFloatingThrombus!=='boolean'){
+      errors.push('El indicador aorticFloatingThrombus debe ser booleano.');
+    }
+    var id='',procedure=null;
+    if(owns(value,'procedureId')){
+      if(typeof value.procedureId!=='string')errors.push('El identificador del procedimiento debe ser texto.');
+      else id=value.procedureId;
+    }
+    if(owns(value,'procedure')&&value.procedure!==null){
+      if(!value.procedure||typeof value.procedure!=='object'||Array.isArray(value.procedure)||!owns(value.procedure,'id')||typeof value.procedure.id!=='string'||!value.procedure.id){
+        errors.push('El procedimiento debe identificar una entrada del catálogo.');
+      }else if(id&&id!==value.procedure.id){
+        errors.push('Los identificadores del procedimiento no coinciden.');
+      }else id=value.procedure.id;
+    }
+    if(id){
+      procedure=Array.isArray(procedures)?procedures.find(function(p){return p.id===id;}):null;
+      if(!procedure)errors.push('No se ha podido verificar el procedimiento en el catálogo.');
+      else{
+        if(value.bleedingRisk&&value.bleedingRisk!==procedure.risk)errors.push('El riesgo hemorrágico no coincide con el procedimiento del catálogo.');
+        value.bleedingRisk=procedure.risk;
+        value.neuraxial=yes(value.neuraxial)||yes(procedure.neuraxial);
+        value.pregnancy=yes(value.pregnancy)||yes(procedure.pregnancy);
+        if(procedure.specialProtocol)value.specialProcedure=procedure.specialProtocol;
+      }
+    }
+    return {input:value,errors:errors};
+  }
+  function invalidDecision(errors){return {route:'review',title:'Revisar los datos clínicos',text:errors.join(' ')};}
   function risk(level,reasons,score){return {level:level,label:{lowModerate:'Bajo-moderado',high:'Alto',unknown:'Sin determinar'}[level],reasons:reasons,score:score===undefined?null:score,source:SOURCE};}
   /** CHA2DS2-VA, maximum 8. Sex is not a component of the 2025 score. */
   function cha2ds2va(input){input=input||{};var age=validAge(input.age);if(age===null)return null;return(age>=75?2:age>=65?1:0)+(yes(input.heartFailure)?1:0)+(yes(input.hypertension)?1:0)+(yes(input.diabetes)?1:0)+(yes(input.vascularDisease)?1:0)+(yes(input.strokeHistory)||yes(input.systemicEmbolism)?2:0);}
@@ -72,7 +128,14 @@
 
   /** The decision is derived from facts, never from a user's preferred interruption. */
   function managementDecision(input){
-    input=input||{};
+    var prepared=prepareInput(input,false);
+    if(prepared.errors.length){
+      if(!input||!Object.keys(input).length)return{route:'pending',title:'Completa el contexto',text:'Indica la urgencia y el procedimiento antes de definir la estrategia.'};
+      return invalidDecision(prepared.errors);
+    }
+    return decisionFromFacts(prepared.input);
+  }
+  function decisionFromFacts(input){
     if(yes(input.urgent))return{route:'review',title:'Valoración urgente',text:'Suspender el anticoagulante y evaluar de inmediato la urgencia, la última toma, la hemostasia y la necesidad de reversión. El calendario electivo no es aplicable.'};
     if(yes(input.neuraxial)||(typeof input.specialProcedure==='string'&&input.specialProcedure.trim()))return{route:'review',title:'Aplicar el protocolo específico',text:'La técnica indicada requiere una estrategia individual; no debe heredar el calendario genérico.'};
     if(['minimal','low','moderate','high','lowModerate'].indexOf(input.bleedingRisk)===-1)return{route:'pending',title:'Selecciona el procedimiento',text:'El algoritmo determinará la estrategia a partir del riesgo hemorrágico y del contexto clínico.'};
@@ -81,11 +144,19 @@
   }
 
   function makePlan(input){
-    input=input||{};var drug=Object.prototype.hasOwnProperty.call(DRUGS,input.drug)?DRUGS[input.drug]:null;
-    var r=thromboticRisk(input),crcl=number(input.crcl),inr=number(input.inr),d=managementDecision(input);
+    var prepared=prepareInput(input,true);input=prepared.input;
+    var drug=Object.prototype.hasOwnProperty.call(DRUGS,input.drug)?DRUGS[input.drug]:null;
+    var r=prepared.errors.length?risk('unknown',['Completa y corrige los datos clínicos antes de clasificar el riesgo.']):thromboticRisk(input);
+    var d=prepared.errors.length?invalidDecision(prepared.errors):decisionFromFacts(input);
     var plan={status:'review',title:'Valoración individual necesaria',risk:r,decision:d,blockers:[],warnings:[],interruption:d.route==='minimal'?'minimal':d.route==='interrupt'?'yes':null,lastDoseDay:null,lastDoseLabel:null,stopDays:null,bridge:{indicated:false,label:'No determinado',text:''},restart:{hours:null,label:null,text:''},steps:[],source:SOURCE,validatedForCurrentPractice:false};
     var b=plan.blockers,w=plan.warnings;
     w.push('Implementación del consenso de 2025 pendiente de validación clínica independiente. Confirmar el plan con el equipo responsable y la hemostasia antes del reinicio.');
+    if(prepared.errors.length){
+      b.push.apply(b,prepared.errors);
+      plan.steps=[{label:'Revisar',title:'No se calcula un calendario automático',text:b.join(' ')}];
+      return plan;
+    }
+    var crcl=number(input.crcl),inr=number(input.inr);
     if(!drug)b.push('Selecciona un anticoagulante oral incluido en el algoritmo.');
     if(validAge(input.age)===null)b.push('Completa una edad adulta válida (18–120 años); este algoritmo no contempla pacientes pediátricos.');
     if(typeof input.specialProcedure==='string'&&input.specialProcedure.trim())b.push('Protocolo específico del procedimiento: '+input.specialProcedure.trim());
@@ -157,5 +228,5 @@
     plan.steps.push({label:high?'+48–72 h':'Primeras 24 h',title:'Valorar reinicio',text:plan.restart.text});
     return plan;
   }
-  return Object.freeze({version:'0.2.0-consensus-2025',SOURCE:SOURCE,DRUGS:DRUGS,cha2ds2va:cha2ds2va,cockcroftGault:cockcroftGault,thromboticRisk:thromboticRisk,managementDecision:managementDecision,makePlan:makePlan});
+  return Object.freeze({version:'0.3.0-consensus-2025',requiredBooleanFields:REQUIRED_BOOLEAN_FIELDS,SOURCE:SOURCE,DRUGS:DRUGS,cha2ds2va:cha2ds2va,cockcroftGault:cockcroftGault,thromboticRisk:thromboticRisk,managementDecision:managementDecision,makePlan:makePlan});
 });

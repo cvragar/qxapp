@@ -6,11 +6,11 @@ const titles = ['Tratamiento','Procedimiento','Riesgo trombótico','Datos clíni
 const subtitles = ['Fármaco y contexto','Intervención y sangrado','Motivo de anticoagulación','Función renal e INR','Decisión y cronología'];
 const labels = {minimal:'Mínimo',low:'Bajo',moderate:'Moderado',lowModerate:'Bajo-moderado',high:'Alto',unknown:'Sin determinar'};
 const indicationLabels = {af:'Fibrilación auricular',valve:'Prótesis valvular',vte:'Tromboembolia venosa',other:'Otras indicaciones'};
-const fresh = () => ({drug:'',urgency:'',urgent:false,indication:'',procedureId:'',specialty:'',query:'',bleedingRisk:'',age:'',sex:'',strokeMonths:'',vteMonths:'',thrombophilia:'none',crcl:'',inr:'',procedureDate:'',riskConfirmed:false,clinicalConfirmed:false});
+const fresh = () => ({...Object.fromEntries(QXClinical.requiredBooleanFields.map(key=>[key,false])),drug:'',urgency:'',urgent:false,indication:'',procedureId:'',specialty:'',query:'',bleedingRisk:'',age:'',sex:'',strokeMonths:'',vteMonths:'',thrombophilia:'none',crcl:'',inr:'',procedureDate:'',riskConfirmed:false,clinicalConfirmed:false});
 let state = fresh(), step = 0, furthest = 0, error = '', currentPlan = null;
 function isAvk(){ return ['acenocumarol','warfarina'].includes(state.drug); }
 function proc(){ return (window.QXProcedures || []).find(p=>p.id===state.procedureId); }
-function clinicalInput(){const p=proc();return {...state,procedure:p||null,continuationEligible:p?.continuationEligible,specialProcedure:p?.specialProtocol||'',pregnancy:state.pregnancy||p?.id==='gyn-caesarean',neuraxial:state.neuraxial||!!p?.neuraxial||/neuroaxial|neuraxial|intrarraqu|punción lumbar|catéter epidural/i.test(p?.name||'')};}
+function clinicalInput(){return {...state,specialProcedure:''};}
 function decision(){return QXClinical.managementDecision(clinicalInput());}
 function tag(level){return `<span class="risk-tag ${esc(level)}">${esc(labels[level]||level)}</span>`;}
 function select(name, label, options, hint='') {return `<div class="field"><label class="field-label" for="${name}">${label}</label><select id="${name}" name="${name}" ${name==='bleedingRisk'&&proc()?'disabled':''}><option value="">Seleccionar…</option>${options.map(([v,t])=>`<option value="${esc(v)}" ${String(state[name])===String(v)?'selected':''}>${esc(t)}</option>`).join('')}</select>${hint?`<p class="field-hint">${hint}</p>`:''}</div>`;}
